@@ -70,6 +70,12 @@ function M.open()
     vim.wo[win].number = false
     vim.wo[win].relativenumber = false
     vim.wo[win].signcolumn = "no"
+    vim.wo[win].winhighlight = table.concat({
+        "Normal:GitStatusBlameNormal",
+        "NormalNC:GitStatusBlameNormal",
+        "EndOfBuffer:GitStatusBlameNormal",
+        "SignColumn:GitStatusBlameNormal",
+    }, ",")
 
     local lines = {
         "Blame: " .. ctx.relpath,
