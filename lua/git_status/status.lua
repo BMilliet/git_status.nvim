@@ -62,11 +62,6 @@ local function root_for_current_context()
     return git.root(vim.fn.getcwd())
 end
 
-local function status_height(line_count)
-    local max_height = math.max(6, math.floor(vim.o.lines * 0.45))
-    return math.min(math.max(line_count + 1, 6), max_height)
-end
-
 local function target_path(root, entry)
     return vim.fs.normalize(vim.fs.joinpath(root, entry.path))
 end
@@ -118,7 +113,7 @@ local function open_entry(buf, action)
     edit_path(path, action)
 end
 
-local function render(buf, root, entries)
+local function build_lines(root, entries)
     local lines = {
         "Status: " .. root,
         string.format(
@@ -139,13 +134,45 @@ local function render(buf, root, entries)
         end
     end
 
+    return lines, rows
+end
+
+local function max_line_width(lines)
+    local width = 1
+    for _, line in ipairs(lines) do
+        width = math.max(width, vim.fn.strdisplaywidth(line))
+    end
+
+    return width
+end
+
+local function popup_config(lines)
+    local available_width = math.max(20, vim.o.columns - 8)
+    local available_height = math.max(6, vim.o.lines - 8)
+    local width = math.min(math.max(max_line_width(lines), 48), math.min(96, available_width))
+    local height = math.min(math.max(#lines, 6), math.min(18, available_height))
+
+    return {
+        relative = "editor",
+        width = width,
+        height = height,
+        col = math.max(0, math.floor((vim.o.columns - width) / 2)),
+        row = math.max(0, math.floor((vim.o.lines - height) / 2) - 1),
+        style = "minimal",
+        border = "rounded",
+        title = " Git Status ",
+        title_pos = "center",
+    }
+end
+
+local function render(buf, lines, rows)
     vim.bo[buf].modifiable = true
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
     vim.api.nvim_buf_clear_namespace(buf, M.ns, 0, -1)
     util.set_highlight(buf, M.ns, "GitStatusStatusHeader", 0, 0, -1)
     util.set_highlight(buf, M.ns, "GitStatusStatusMeta", 1, 0, -1)
 
-    if #entries == 0 then
+    if not next(rows) then
         util.set_highlight(buf, M.ns, "GitStatusStatusMeta", 3, 0, -1)
     else
         for row, entry in pairs(rows) do
@@ -156,8 +183,6 @@ local function render(buf, root, entries)
 
     vim.bo[buf].modified = false
     vim.bo[buf].modifiable = false
-
-    return rows
 end
 
 function M.open()
@@ -175,13 +200,10 @@ function M.open()
         return
     end
 
-    local source_win = vim.api.nvim_get_current_win()
-    local height = status_height(#entries + 3)
-    vim.cmd("botright " .. height .. "split")
-
-    local win = vim.api.nvim_get_current_win()
     local buf = vim.api.nvim_create_buf(false, true)
-    vim.api.nvim_win_set_buf(win, buf)
+    local lines, rows = build_lines(root, entries)
+    local source_win = vim.api.nvim_get_current_win()
+    local win = vim.api.nvim_open_win(buf, true, popup_config(lines))
 
     vim.bo[buf].bufhidden = "wipe"
     vim.bo[buf].buftype = "nofile"
@@ -195,9 +217,11 @@ function M.open()
     vim.wo[win].signcolumn = "no"
     vim.wo[win].wrap = false
 
+    render(buf, lines, rows)
+
     buffers[buf] = {
         root = root,
-        rows = render(buf, root, entries),
+        rows = rows,
         source_win = source_win,
     }
 
@@ -222,6 +246,10 @@ function M.open()
     end, { buffer = buf, nowait = true, silent = true, desc = "Open status file in tab" })
 
     vim.keymap.set("n", "q", function()
+        close_window(vim.api.nvim_get_current_win())
+    end, { buffer = buf, nowait = true, silent = true, desc = "Close status view" })
+
+    vim.keymap.set("n", "<Esc>", function()
         close_window(vim.api.nvim_get_current_win())
     end, { buffer = buf, nowait = true, silent = true, desc = "Close status view" })
 
