@@ -5,6 +5,8 @@ local util = require("git_status.util")
 
 local M = {}
 
+local gradient_size = 10
+
 local function parse(stdout)
     local rows = {}
     local current = nil
@@ -101,10 +103,17 @@ function M.open()
 
     for row = 3, #lines - 1 do
         local line = lines[row + 1]
-        local hash_start = line:find("%S+", line_width + 3)
-        if hash_start then
-            util.set_highlight(buf, signs.ns, "GitStatusBlameHash", row, hash_start - 1, hash_start + 7)
-            util.set_highlight(buf, signs.ns, "GitStatusBlameAuthor", row, hash_start + 10, hash_start + 34)
+        local separator = line:find(" | ", 1, true)
+        if separator then
+            local gradient_index = ((row - 3) % gradient_size) + 1
+            util.set_highlight(
+                buf,
+                signs.ns,
+                "GitStatusBlameGradient" .. gradient_index,
+                row,
+                0,
+                separator + 1
+            )
         end
     end
 
