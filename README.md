@@ -53,9 +53,11 @@ require("git_status").setup({})
 ## Commands
 
 - `:Blame` opens a blame view for the current file.
-- `:Status` opens a centered changed-file popup. Press `<CR>` or `o` on a file
-  to open it, `s` for a split, `v` for a vertical split, `t` for a tab, and `q`
-  or `<Esc>` to close.
+- `:Status` opens a centered changed-file popup backed by a listed
+  `git-status://...` buffer. The header shows repository, branch, current
+  commit, and the latest commit subject. Press `<CR>` or `o` on a file to open
+  it, `s` for a split, `v` for a vertical split, `t` for a tab, and `q` or
+  `<Esc>` to close.
 - `:GitStatusRefresh` refreshes the signs and scrollbar.
 - `:GitStatusToggle` enables or disables both signs and scrollbar.
 

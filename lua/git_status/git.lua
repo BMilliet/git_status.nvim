@@ -256,4 +256,30 @@ function M.status(root)
     return code, M.parse_status(stdout), stderr
 end
 
+function M.head(root)
+    local branch_code, branch_stdout = run_git(root, { "rev-parse", "--abbrev-ref", "HEAD" })
+    local hash_code, hash_stdout = run_git(root, { "rev-parse", "--short", "HEAD" })
+    local subject_code, subject_stdout = run_git(root, { "log", "-1", "--pretty=%s" })
+
+    local branch = branch_code == 0 and vim.trim(branch_stdout) or ""
+    local hash = hash_code == 0 and vim.trim(hash_stdout) or ""
+    local subject = subject_code == 0 and vim.trim(subject_stdout) or ""
+
+    if branch == "HEAD" then
+        branch = hash ~= "" and "detached" or "no branch"
+    elseif branch == "" then
+        branch = "no branch"
+    end
+
+    if hash == "" then
+        hash = "no commits"
+    end
+
+    return {
+        branch = branch,
+        hash = hash,
+        subject = subject,
+    }
+end
+
 return M

@@ -66,6 +66,26 @@ local function target_path(root, entry)
     return vim.fs.normalize(vim.fs.joinpath(root, entry.path))
 end
 
+local function buffer_name(root)
+    return "git-status://" .. root
+end
+
+local function listed_buffer(root)
+    local name = buffer_name(root)
+    for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_is_valid(bufnr)
+            and vim.api.nvim_buf_is_loaded(bufnr)
+            and vim.api.nvim_buf_get_name(bufnr) == name
+        then
+            return bufnr
+        end
+    end
+
+    local bufnr = vim.api.nvim_create_buf(true, true)
+    vim.api.nvim_buf_set_name(bufnr, name)
+    return bufnr
+end
+
 local function close_window(win)
     if vim.api.nvim_win_is_valid(win) then
         pcall(vim.api.nvim_win_close, win, true)
@@ -113,9 +133,12 @@ local function open_entry(buf, action)
     edit_path(path, action)
 end
 
-local function build_lines(root, entries)
+local function build_lines(root, head, entries)
     local lines = {
-        "Status: " .. root,
+        "Repository: " .. root,
+        "Branch: " .. head.branch .. "    Commit: " .. head.hash,
+        "Last: " .. (head.subject ~= "" and head.subject or "no commit message"),
+        "",
         string.format(
             "%d changed file%s  |  <CR>/o open  s split  v vsplit  t tab  q close",
             #entries,
@@ -147,10 +170,18 @@ local function max_line_width(lines)
 end
 
 local function popup_config(lines)
-    local available_width = math.max(20, vim.o.columns - 8)
-    local available_height = math.max(6, vim.o.lines - 8)
-    local width = math.min(math.max(max_line_width(lines), 48), math.min(96, available_width))
-    local height = math.min(math.max(#lines, 6), math.min(18, available_height))
+    local available_width = math.max(50, vim.o.columns - 6)
+    local available_height = math.max(8, vim.o.lines - 6)
+    local max_width = math.min(120, available_width)
+    local max_height = math.min(28, available_height)
+    local width = math.min(
+        math.max(max_line_width(lines) + 2, math.floor(vim.o.columns * 0.72), 72),
+        max_width
+    )
+    local height = math.min(
+        math.max(#lines + 1, math.floor(vim.o.lines * 0.5), 12),
+        max_height
+    )
 
     return {
         relative = "editor",
@@ -170,10 +201,22 @@ local function render(buf, lines, rows)
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
     vim.api.nvim_buf_clear_namespace(buf, M.ns, 0, -1)
     util.set_highlight(buf, M.ns, "GitStatusStatusHeader", 0, 0, -1)
-    util.set_highlight(buf, M.ns, "GitStatusStatusMeta", 1, 0, -1)
+
+    local branch_line = lines[2]
+    local commit_label_start = branch_line:find("Commit:", 1, true)
+    util.set_highlight(buf, M.ns, "GitStatusStatusLabel", 1, 0, #"Branch:")
+    if commit_label_start then
+        util.set_highlight(buf, M.ns, "GitStatusStatusBranch", 1, #"Branch: ", commit_label_start - 5)
+        util.set_highlight(buf, M.ns, "GitStatusStatusLabel", 1, commit_label_start - 1, commit_label_start + #"Commit:" - 1)
+        util.set_highlight(buf, M.ns, "GitStatusStatusHash", 1, commit_label_start + #"Commit: " - 1, -1)
+    end
+
+    util.set_highlight(buf, M.ns, "GitStatusStatusLabel", 2, 0, 5)
+    util.set_highlight(buf, M.ns, "GitStatusStatusSubject", 2, 6, -1)
+    util.set_highlight(buf, M.ns, "GitStatusStatusMeta", 4, 0, -1)
 
     if not next(rows) then
-        util.set_highlight(buf, M.ns, "GitStatusStatusMeta", 3, 0, -1)
+        util.set_highlight(buf, M.ns, "GitStatusStatusMeta", 6, 0, -1)
     else
         for row, entry in pairs(rows) do
             util.set_highlight(buf, M.ns, entry_group(entry), row - 1, 0, 2)
@@ -200,14 +243,15 @@ function M.open()
         return
     end
 
-    local buf = vim.api.nvim_create_buf(false, true)
-    local lines, rows = build_lines(root, entries)
+    local head = git.head(root)
+    local buf = listed_buffer(root)
+    local lines, rows = build_lines(root, head, entries)
     local source_win = vim.api.nvim_get_current_win()
     local win = vim.api.nvim_open_win(buf, true, popup_config(lines))
 
-    vim.bo[buf].bufhidden = "wipe"
+    vim.bo[buf].bufhidden = "hide"
     vim.bo[buf].buftype = "nofile"
-    vim.bo[buf].buflisted = false
+    vim.bo[buf].buflisted = true
     vim.bo[buf].filetype = "gitstatus"
     vim.bo[buf].swapfile = false
     vim.wo[win].cursorline = true
