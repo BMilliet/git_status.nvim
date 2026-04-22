@@ -9,6 +9,14 @@ function M.define()
     vim.api.nvim_set_hl(0, "GitStatusBlameMeta", { link = "Comment", default = true })
     vim.api.nvim_set_hl(0, "GitStatusBlameHash", { link = "Identifier", default = true })
     vim.api.nvim_set_hl(0, "GitStatusBlameAuthor", { link = "Statement", default = true })
+    vim.api.nvim_set_hl(0, "GitStatusStatusHeader", { link = "Title", default = true })
+    vim.api.nvim_set_hl(0, "GitStatusStatusMeta", { link = "Comment", default = true })
+    vim.api.nvim_set_hl(0, "GitStatusStatusPath", { link = "Normal", default = true })
+    vim.api.nvim_set_hl(0, "GitStatusStatusAdd", { link = "GitStatusAdd", default = true })
+    vim.api.nvim_set_hl(0, "GitStatusStatusChange", { link = "GitStatusChange", default = true })
+    vim.api.nvim_set_hl(0, "GitStatusStatusDelete", { link = "GitStatusDelete", default = true })
+    vim.api.nvim_set_hl(0, "GitStatusStatusRename", { link = "Identifier", default = true })
+    vim.api.nvim_set_hl(0, "GitStatusStatusUnmerged", { link = "ErrorMsg", default = true })
 end
 
 return M

@@ -19,6 +19,25 @@ local function relative_path(root, path)
     return path:gsub("^" .. prefix, "")
 end
 
+function M.root(start)
+    local dir = start or vim.fn.getcwd()
+    if dir == "" then
+        return nil
+    end
+
+    dir = vim.fs.normalize(vim.fn.fnamemodify(dir, ":p"))
+    if vim.fn.isdirectory(dir) == 0 then
+        dir = vim.fs.dirname(dir)
+    end
+
+    local code, stdout = util.run({ "git", "-C", dir, "rev-parse", "--show-toplevel" })
+    if code ~= 0 then
+        return nil
+    end
+
+    return vim.fs.normalize(vim.trim(stdout))
+end
+
 function M.context(bufnr)
     if not vim.api.nvim_buf_is_valid(bufnr) or vim.bo[bufnr].buftype ~= "" then
         return nil
@@ -31,12 +50,11 @@ function M.context(bufnr)
 
     local path = vim.fs.normalize(vim.fn.fnamemodify(name, ":p"))
     local dir = vim.fs.dirname(path)
-    local code, stdout = util.run({ "git", "-C", dir, "rev-parse", "--show-toplevel" })
-    if code ~= 0 then
+    local root = M.root(dir)
+    if not root then
         return nil
     end
 
-    local root = vim.fs.normalize(vim.trim(stdout))
     return {
         bufnr = bufnr,
         path = path,
@@ -182,6 +200,60 @@ function M.blame(ctx)
         "--",
         ctx.relpath,
     })
+end
+
+function M.parse_status(stdout)
+    local entries = {}
+    local records = vim.split(stdout or "", "\0", { plain = true })
+    if records[#records] == "" then
+        table.remove(records, #records)
+    end
+
+    local index = 1
+    while index <= #records do
+        local record = records[index]
+        local status = record:sub(1, 2)
+        local path = record:sub(4)
+
+        if #record >= 4 and path ~= "" then
+            local entry = {
+                status = status,
+                index = status:sub(1, 1),
+                worktree = status:sub(2, 2),
+                path = path,
+            }
+            local renamed_or_copied = entry.index == "R"
+                or entry.index == "C"
+                or entry.worktree == "R"
+                or entry.worktree == "C"
+
+            if renamed_or_copied then
+                index = index + 1
+                entry.old_path = records[index]
+            end
+
+            table.insert(entries, entry)
+        end
+
+        index = index + 1
+    end
+
+    return entries
+end
+
+function M.status(root)
+    local code, stdout, stderr = run_git(root, {
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+    })
+
+    if code ~= 0 then
+        return code, {}, stderr
+    end
+
+    return code, M.parse_status(stdout), stderr
 end
 
 return M

@@ -41,6 +41,7 @@ local defaults = {
     commands = {
         blame = "Blame",
         refresh = "GitStatusRefresh",
+        status = "Status",
         toggle = "GitStatusToggle",
     },
 }

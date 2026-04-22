@@ -4,6 +4,7 @@ local git = require("git_status.git")
 local highlights = require("git_status.highlights")
 local scrollbar = require("git_status.scrollbar")
 local signs = require("git_status.signs")
+local status = require("git_status.status")
 local util = require("git_status.util")
 
 local M = {}
@@ -96,6 +97,10 @@ function M.blame()
     blame.open()
 end
 
+function M.status()
+    status.open()
+end
+
 local function create_command(name, callback, desc)
     if not name or name == "" then
         return
@@ -166,6 +171,10 @@ function M.setup(opts)
     create_command(config.values.commands.refresh, function()
         M.refresh()
     end, "Refresh git status signs and scrollbar")
+
+    create_command(config.values.commands.status, function()
+        M.status()
+    end, "Show changed git files")
 
     create_command(config.values.commands.toggle, function()
         M.toggle()
