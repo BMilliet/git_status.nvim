@@ -1,9 +1,10 @@
 local git = require("git_status.git")
 local highlights = require("git_status.highlights")
-local signs = require("git_status.signs")
 local util = require("git_status.util")
 
 local M = {}
+
+M.ns = vim.api.nvim_create_namespace("git_status_blame")
 
 local gradient_size = 10
 
@@ -97,9 +98,9 @@ function M.open()
 
     vim.bo[buf].modifiable = true
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-    vim.api.nvim_buf_clear_namespace(buf, signs.ns, 0, -1)
-    util.set_highlight(buf, signs.ns, "GitStatusBlameHeader", 0, 0, -1)
-    util.set_highlight(buf, signs.ns, "GitStatusBlameMeta", 1, 0, -1)
+    vim.api.nvim_buf_clear_namespace(buf, M.ns, 0, -1)
+    util.set_highlight(buf, M.ns, "GitStatusBlameHeader", 0, 0, -1)
+    util.set_highlight(buf, M.ns, "GitStatusBlameMeta", 1, 0, -1)
 
     for row = 3, #lines - 1 do
         local line = lines[row + 1]
@@ -108,7 +109,7 @@ function M.open()
             local gradient_index = ((row - 3) % gradient_size) + 1
             util.set_highlight(
                 buf,
-                signs.ns,
+                M.ns,
                 "GitStatusBlameGradient" .. gradient_index,
                 row,
                 0,
