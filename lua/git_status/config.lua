@@ -40,6 +40,7 @@ local defaults = {
     },
     commands = {
         blame = "Blame",
+        conflict = "Conflict",
         refresh = "GitStatusRefresh",
         status = "Status",
         toggle = "GitStatusToggle",
