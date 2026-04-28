@@ -9,6 +9,7 @@ M.ns = vim.api.nvim_create_namespace("git_status_conflict")
 local menu_buffers = {}
 local file_states = {}
 local floats = {}
+local footers = {}
 
 local function root_for_current_context()
     local ctx = git.context(vim.api.nvim_get_current_buf())
@@ -59,9 +60,59 @@ local function side_keeps_file(entry, side)
     return true
 end
 
+local function conflict_label(entry)
+    if entry.status == "UU" then
+        return "modified"
+    end
+
+    if entry.status == "AA" then
+        return "added"
+    end
+
+    if entry.status == "DD" then
+        return "deleted"
+    end
+
+    if entry.status == "UD" or entry.status == "DU" then
+        return "deleted"
+    end
+
+    if entry.status == "AU" or entry.status == "UA" then
+        return "added"
+    end
+
+    return "conflict"
+end
+
+local function label_group(entry)
+    if entry.status == "AA" or entry.status == "AU" or entry.status == "UA" then
+        return "GitStatusConflictAdded"
+    end
+
+    if entry.status == "DD" or entry.status == "DU" or entry.status == "UD" then
+        return "GitStatusConflictDeleted"
+    end
+
+    if entry.status == "UU" then
+        return "GitStatusConflictModified"
+    end
+
+    return "GitStatusConflictLabel"
+end
+
 local function close_window(win)
     if vim.api.nvim_win_is_valid(win) then
         pcall(vim.api.nvim_win_close, win, true)
+    end
+end
+
+local function close_buffer_window(buf)
+    if vim.api.nvim_buf_is_valid(buf) then
+        for _, win in ipairs(vim.api.nvim_list_wins()) do
+            if vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_buf(win) == buf then
+                close_window(win)
+            end
+        end
     end
 end
 
@@ -99,6 +150,37 @@ local function popup_config(lines, title)
     }
 end
 
+local function footer_config(popup)
+    return {
+        relative = "editor",
+        width = popup.width,
+        height = 1,
+        col = popup.col,
+        row = math.min(vim.o.lines - 3, popup.row + popup.height + 2),
+        style = "minimal",
+        focusable = false,
+        zindex = 59,
+    }
+end
+
+local function open_footer(popup, text)
+    local buf = vim.api.nvim_create_buf(false, true)
+    local win = vim.api.nvim_open_win(buf, false, footer_config(popup))
+
+    vim.bo[buf].bufhidden = "wipe"
+    vim.bo[buf].buftype = "nofile"
+    vim.bo[buf].buflisted = false
+    vim.bo[buf].swapfile = false
+    vim.wo[win].winhighlight = "Normal:GitStatusConflictFooter"
+    vim.wo[win].wrap = false
+
+    vim.bo[buf].modifiable = true
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, { text })
+    vim.bo[buf].modifiable = false
+
+    return buf
+end
+
 local function set_popup_window_options(win)
     vim.wo[win].cursorline = true
     vim.wo[win].foldcolumn = "0"
@@ -116,6 +198,10 @@ local function set_popup_window_options(win)
 end
 
 local function action_group(row)
+    if row.entry then
+        return label_group(row.entry)
+    end
+
     if row.side == "ours" then
         return "GitStatusConflictOurs"
     end
@@ -137,9 +223,9 @@ local function render_menu(buf, lines, rows, index_width)
     else
         for line_number, row in pairs(rows) do
             local status_col = index_width + 2
-            local text_col = index_width + 5
+            local text_col = status_col + row.label_width + 2
             util.set_highlight(buf, M.ns, "GitStatusConflictIndex", line_number - 1, 0, index_width)
-            util.set_highlight(buf, M.ns, action_group(row), line_number - 1, status_col, status_col + 1)
+            util.set_highlight(buf, M.ns, action_group(row), line_number - 1, status_col, status_col + row.label_width)
             util.set_highlight(buf, M.ns, "GitStatusConflictPath", line_number - 1, text_col, -1)
         end
     end
@@ -149,28 +235,29 @@ local function render_menu(buf, lines, rows, index_width)
 end
 
 local function build_menu_lines(entries)
-    local line_count = #entries > 0 and (#entries + 2) or 1
+    local line_count = math.max(1, #entries)
     local index_width = #tostring(line_count)
     local lines = {}
     local rows = {}
+    local label_width = 8
 
     if #entries == 0 then
         return { "No conflicted files" }, rows, index_width
     end
 
-    table.insert(lines, string.format("%" .. index_width .. "d  T  Accept all incoming/main (theirs)", 1))
-    rows[#lines] = { type = "all", side = "theirs" }
-    table.insert(lines, string.format("%" .. index_width .. "d  O  Accept all current branch (ours)", 2))
-    rows[#lines] = { type = "all", side = "ours" }
-
     for index, entry in ipairs(entries) do
-        local row_number = index + 2
+        local label = conflict_label(entry)
         table.insert(lines, string.format(
-            "%" .. index_width .. "d  X  %s",
-            row_number,
+            "%" .. index_width .. "d  %-" .. label_width .. "s  %s",
+            index,
+            label,
             display_path(entry)
         ))
-        rows[#lines] = { type = "file", entry = entry }
+        rows[#lines] = {
+            type = "file",
+            entry = entry,
+            label_width = label_width,
+        }
     end
 
     return lines, rows, index_width
@@ -202,6 +289,23 @@ local function close_float(win)
     floats[win] = nil
 end
 
+local function close_file_footer(win)
+    local state = footers[win]
+    if not state then
+        return
+    end
+
+    if state.win and vim.api.nvim_win_is_valid(state.win) then
+        pcall(vim.api.nvim_win_close, state.win, true)
+    end
+
+    if state.buf and vim.api.nvim_buf_is_valid(state.buf) then
+        pcall(vim.api.nvim_buf_delete, state.buf, { force = true })
+    end
+
+    footers[win] = nil
+end
+
 local function clear_file_buffer(bufnr)
     file_states[bufnr] = nil
 
@@ -213,6 +317,12 @@ local function clear_file_buffer(bufnr)
             end
         else
             close_float(win)
+        end
+    end
+
+    for win, state in pairs(footers) do
+        if not vim.api.nvim_win_is_valid(win) or state.target_buf == bufnr then
+            close_file_footer(win)
         end
     end
 end
@@ -268,6 +378,90 @@ local function ensure_float(win)
     return state
 end
 
+local function file_footer_text(chunks)
+    if #chunks == 0 then
+        return "resolved: write file and git add it"
+    end
+
+    return "co current branch chunk   ct incoming/main chunk   ]x next   [x previous"
+end
+
+local function ensure_file_footer(win, bufnr, chunks)
+    local state = footers[win]
+    local height = vim.api.nvim_win_get_height(win)
+    local width = vim.api.nvim_win_get_width(win)
+    local text = file_footer_text(chunks)
+
+    if state and state.target_buf ~= bufnr then
+        close_file_footer(win)
+        state = nil
+    end
+
+    if
+        state
+        and state.win
+        and vim.api.nvim_win_is_valid(state.win)
+        and state.buf
+        and vim.api.nvim_buf_is_valid(state.buf)
+    then
+        vim.api.nvim_win_set_config(state.win, {
+            relative = "win",
+            win = win,
+            anchor = "SW",
+            row = height,
+            col = 0,
+            width = width,
+            height = 1,
+        })
+    else
+        local buf = vim.api.nvim_create_buf(false, true)
+        vim.bo[buf].bufhidden = "wipe"
+        vim.bo[buf].buftype = "nofile"
+        vim.bo[buf].buflisted = false
+        vim.bo[buf].swapfile = false
+
+        local footer_win = vim.api.nvim_open_win(buf, false, {
+            relative = "win",
+            win = win,
+            anchor = "SW",
+            row = height,
+            col = 0,
+            width = width,
+            height = 1,
+            focusable = false,
+            noautocmd = true,
+            style = "minimal",
+            zindex = 69,
+        })
+
+        vim.wo[footer_win].winhighlight = "Normal:GitStatusConflictFooter,EndOfBuffer:GitStatusConflictFooter"
+        vim.wo[footer_win].wrap = false
+        state = { buf = buf, win = footer_win, target_buf = bufnr }
+        footers[win] = state
+    end
+
+    vim.bo[state.buf].modifiable = true
+    vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, { text })
+    vim.bo[state.buf].modifiable = false
+end
+
+local function render_file_footer(bufnr, chunks)
+    local visible = {}
+
+    for _, win in ipairs(vim.api.nvim_list_wins()) do
+        if util.is_normal_window(win) and vim.api.nvim_win_get_buf(win) == bufnr then
+            visible[win] = true
+            ensure_file_footer(win, bufnr, chunks)
+        end
+    end
+
+    for win, state in pairs(footers) do
+        if state.target_buf == bufnr and not visible[win] then
+            close_file_footer(win)
+        end
+    end
+end
+
 local function parse_chunks(bufnr)
     local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
     local chunks = {}
@@ -307,6 +501,10 @@ local function parse_chunks(bufnr)
     end
 
     return chunks
+end
+
+local function chunk_contains(chunk, line)
+    return line >= chunk.start and line <= chunk.finish
 end
 
 local function render_scrollbar(bufnr, chunks)
@@ -365,29 +563,30 @@ local function render_file(bufnr)
     end
 
     local chunks = parse_chunks(bufnr)
+    local cursor_line = vim.api.nvim_get_current_buf() == bufnr and vim.api.nvim_win_get_cursor(0)[1] or nil
     vim.api.nvim_buf_clear_namespace(bufnr, M.ns, 0, -1)
 
     for _, chunk in ipairs(chunks) do
+        local is_current = cursor_line and chunk_contains(chunk, cursor_line)
+        local marker_group = is_current and "GitStatusConflictCurrentMarker" or "GitStatusConflictMarker"
+        local ours_group = is_current and "GitStatusConflictCurrentOursBlock" or "GitStatusConflictOursBlock"
+        local theirs_group = is_current and "GitStatusConflictCurrentTheirsBlock" or "GitStatusConflictTheirsBlock"
+
         vim.api.nvim_buf_set_extmark(bufnr, M.ns, chunk.start - 1, 0, {
             sign_text = "X",
-            sign_hl_group = "GitStatusConflictUnresolved",
-            virt_text = {
-                { " co current branch ", "GitStatusConflictOurs" },
-                { " ct incoming/main ", "GitStatusConflictTheirs" },
-            },
-            virt_text_pos = "right_align",
+            sign_hl_group = is_current and "GitStatusConflictCurrentMarker" or "GitStatusConflictUnresolved",
         })
 
-        util.set_highlight(bufnr, M.ns, "GitStatusConflictMarker", chunk.start - 1, 0, -1)
-        util.set_highlight(bufnr, M.ns, "GitStatusConflictMarker", chunk.separator - 1, 0, -1)
-        util.set_highlight(bufnr, M.ns, "GitStatusConflictMarker", chunk.finish - 1, 0, -1)
+        util.set_highlight(bufnr, M.ns, marker_group, chunk.start - 1, 0, -1)
+        util.set_highlight(bufnr, M.ns, marker_group, chunk.separator - 1, 0, -1)
+        util.set_highlight(bufnr, M.ns, marker_group, chunk.finish - 1, 0, -1)
 
         for line = chunk.ours_start, chunk.ours_finish do
-            util.set_highlight(bufnr, M.ns, "GitStatusConflictOursBlock", line - 1, 0, -1)
+            util.set_highlight(bufnr, M.ns, ours_group, line - 1, 0, -1)
         end
 
         for line = chunk.theirs_start, chunk.theirs_finish do
-            util.set_highlight(bufnr, M.ns, "GitStatusConflictTheirsBlock", line - 1, 0, -1)
+            util.set_highlight(bufnr, M.ns, theirs_group, line - 1, 0, -1)
         end
     end
 
@@ -404,6 +603,7 @@ local function render_file(bufnr)
     end
 
     render_scrollbar(bufnr, chunks)
+    render_file_footer(bufnr, chunks)
 end
 
 local function current_chunk(bufnr)
@@ -414,18 +614,12 @@ local function current_chunk(bufnr)
 
     local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
     for _, chunk in ipairs(chunks) do
-        if cursor_line >= chunk.start and cursor_line <= chunk.finish then
+        if chunk_contains(chunk, cursor_line) then
             return chunk, chunks
         end
     end
 
-    for _, chunk in ipairs(chunks) do
-        if chunk.start >= cursor_line then
-            return chunk, chunks
-        end
-    end
-
-    return chunks[1], chunks
+    return nil, chunks
 end
 
 local function chunk_lines(bufnr, first, last)
@@ -446,7 +640,7 @@ local function resolve_current_chunk(side)
 
     local chunk = current_chunk(bufnr)
     if not chunk then
-        util.notify("no conflict chunk under or after cursor", vim.log.levels.WARN)
+        util.notify("place the cursor inside a conflict chunk", vim.log.levels.WARN)
         return
     end
 
@@ -548,7 +742,6 @@ local function setup_file_buffer(root, entry)
     })
 
     render_file(bufnr)
-    util.notify("conflict keys: co current branch, ct incoming/main, ]x next, [x previous")
 end
 
 local function open_conflict_file(root, entry, source_win)
@@ -638,22 +831,28 @@ local function menu_select(buf)
 
     close_window(vim.api.nvim_get_current_win())
 
-    if item.type == "all" then
-        local code, stderr = git.accept_conflicts(state.root, state.entries, item.side)
-        if code ~= 0 then
-            util.notify(stderr, vim.log.levels.ERROR)
-            return
-        end
-
-        util.notify(item.side == "ours" and "accepted all current branch conflicts" or "accepted all incoming/main conflicts")
-        return
-    end
-
     if is_delete_conflict(item.entry) then
         open_delete_choice(state.root, item.entry, state.source_win)
     else
         open_conflict_file(state.root, item.entry, state.source_win)
     end
+end
+
+local function accept_all(buf, side)
+    local state = menu_buffers[buf]
+    if not state or #state.entries == 0 then
+        return
+    end
+
+    close_buffer_window(buf)
+
+    local code, stderr = git.accept_conflicts(state.root, state.entries, side)
+    if code ~= 0 then
+        util.notify(stderr, vim.log.levels.ERROR)
+        return
+    end
+
+    util.notify(side == "ours" and "accepted all current branch conflicts" or "accepted all incoming/main conflicts")
 end
 
 function M.open()
@@ -674,7 +873,12 @@ function M.open()
     local lines, rows, index_width = build_menu_lines(entries)
     local source_win = vim.api.nvim_get_current_win()
     local buf = vim.api.nvim_create_buf(false, true)
-    local win = vim.api.nvim_open_win(buf, true, popup_config(lines, "Conflict"))
+    local popup = popup_config(lines, "Conflict")
+    local win = vim.api.nvim_open_win(buf, true, popup)
+    local footer_text = #entries > 0
+        and "<CR>/o open   T accept incoming/main   O accept current branch   q/<Esc> close"
+        or "q/<Esc> close"
+    local footer_buf = open_footer(popup, footer_text)
 
     vim.bo[buf].bufhidden = "wipe"
     vim.bo[buf].buftype = "nofile"
@@ -687,6 +891,7 @@ function M.open()
     menu_buffers[buf] = {
         root = root,
         entries = entries,
+        footer_buf = footer_buf,
         rows = rows,
         source_win = source_win,
     }
@@ -699,11 +904,21 @@ function M.open()
         menu_select(buf)
     end, { buffer = buf, nowait = true, silent = true, desc = "Select conflict action" })
 
+    vim.keymap.set("n", "T", function()
+        accept_all(buf, "theirs")
+    end, { buffer = buf, nowait = true, silent = true, desc = "Accept all incoming conflicts" })
+
+    vim.keymap.set("n", "O", function()
+        accept_all(buf, "ours")
+    end, { buffer = buf, nowait = true, silent = true, desc = "Accept all current branch conflicts" })
+
     vim.keymap.set("n", "q", function()
+        close_buffer_window(footer_buf)
         close_window(vim.api.nvim_get_current_win())
     end, { buffer = buf, nowait = true, silent = true, desc = "Close conflict view" })
 
     vim.keymap.set("n", "<Esc>", function()
+        close_buffer_window(footer_buf)
         close_window(vim.api.nvim_get_current_win())
     end, { buffer = buf, nowait = true, silent = true, desc = "Close conflict view" })
 
@@ -711,6 +926,7 @@ function M.open()
         buffer = buf,
         once = true,
         callback = function()
+            close_buffer_window(footer_buf)
             menu_buffers[buf] = nil
         end,
     })

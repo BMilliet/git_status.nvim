@@ -56,15 +56,18 @@ require("git_status").setup({})
 ## Commands
 
 - `:Blame` opens a blame view for the current file.
-- `:Status` opens a Harpoon-style changed-file popup over the current buffer.
+- `:Status` opens a centered changed-file popup over the current buffer.
   Each row has a colored status letter, such as `M` for modified and `A` for
   added. Press `<CR>` or `o` on a file to open it, `s` for a split, `v` for a
   vertical split, `t` for a tab, and `q` or `<Esc>` to close.
-- `:Conflict` opens a Harpoon-style conflict popup. Pick `Accept all
-  incoming/main` for `theirs`, `Accept all current branch` for `ours`, or select
-  a conflicted file. Inside a conflict file, use `co` for the current branch,
-  `ct` for incoming/main, `]x` for the next conflict, and `[x` for the previous
-  conflict.
+- `:Conflict` opens a centered conflict popup containing only conflicted
+  files, with colored labels such as `modified` or `deleted` before each path.
+  The footer shows commands: `T` accepts all incoming/main conflicts, `O`
+  accepts all current branch conflicts, and `<CR>` or `o` opens the selected
+  file. Inside a conflict file, a discreet footer shows the available commands:
+  `co` accepts the current branch chunk under the cursor, `ct` accepts the
+  incoming/main chunk under the cursor, `]x` jumps to the next conflict, and
+  `[x` jumps to the previous conflict. The active conflict chunk is highlighted.
 - `:GitStatusRefresh` refreshes the signs and scrollbar.
 - `:GitStatusToggle` enables or disables both signs and scrollbar.
 
