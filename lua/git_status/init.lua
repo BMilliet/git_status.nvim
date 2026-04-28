@@ -1,6 +1,5 @@
 local blame = require("git_status.blame")
 local config = require("git_status.config")
-local conflict = require("git_status.conflict")
 local git = require("git_status.git")
 local highlights = require("git_status.highlights")
 local scrollbar = require("git_status.scrollbar")
@@ -102,10 +101,6 @@ function M.status()
     status.open()
 end
 
-function M.conflict()
-    conflict.open()
-end
-
 local function create_command(name, callback, desc)
     if not name or name == "" then
         return
@@ -172,10 +167,6 @@ function M.setup(opts)
     create_command(config.values.commands.blame, function()
         M.blame()
     end, "Show git blame for the current file")
-
-    create_command(config.values.commands.conflict, function()
-        M.conflict()
-    end, "Resolve git conflicts")
 
     create_command(config.values.commands.refresh, function()
         M.refresh()

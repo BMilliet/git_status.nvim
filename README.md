@@ -4,8 +4,8 @@ Standalone git signs, scrollbar markers, and blame for Neovim.
 
 This plugin does not depend on `gitsigns.nvim`. It calls Git directly, parses
 file hunks, renders colored signs on the left side of the code, renders a
-VS Code-like scrollbar overlay on the right side, and provides `:Blame`,
-`:Status`, and `:Conflict` helper views.
+VS Code-like scrollbar overlay on the right side, and provides `:Blame` and
+`:Status` helper views.
 
 ## Features
 
@@ -14,9 +14,7 @@ VS Code-like scrollbar overlay on the right side, and provides `:Blame`,
   `50+`, and `20-`.
 - Cursor marker on the right scrollbar.
 - `:Status` scratch list with Git-style status codes for changed, added,
-  deleted, renamed, copied, untracked, and conflicted files.
-- `:Conflict` popup for unmerged files, with bulk accept actions and per-chunk
-  `ours`/`theirs` resolution helpers.
+  deleted, renamed, copied, untracked, and unmerged files.
 - `:Blame` scratch view with commit hash, author, date, summary, and source
   line.
 - No dependency on `gitsigns.nvim`.
@@ -37,7 +35,6 @@ VS Code-like scrollbar overlay on the right side, and provides `:Blame`,
   },
   cmd = {
     "Blame",
-    "Conflict",
     "Status",
     "GitStatusRefresh",
     "GitStatusToggle",
@@ -60,14 +57,6 @@ require("git_status").setup({})
   Each row has a colored status letter, such as `M` for modified and `A` for
   added. Press `<CR>` or `o` on a file to open it, `s` for a split, `v` for a
   vertical split, `t` for a tab, and `q` or `<Esc>` to close.
-- `:Conflict` opens a centered conflict popup containing only conflicted
-  files, with colored labels such as `modified` or `deleted` before each path.
-  The footer shows commands: `T` accepts all incoming/main conflicts, `O`
-  accepts all current branch conflicts, and `<CR>` or `o` opens the selected
-  file. Inside a conflict file, a discreet footer shows the available commands:
-  `co` accepts the current branch chunk under the cursor, `ct` accepts the
-  incoming/main chunk under the cursor, `]x` jumps to the next conflict, and
-  `[x` jumps to the previous conflict. The active conflict chunk is highlighted.
 - `:GitStatusRefresh` refreshes the signs and scrollbar.
 - `:GitStatusToggle` enables or disables both signs and scrollbar.
 
@@ -80,7 +69,6 @@ require("git_status").setup({})
 - `lua/git_status/signs.lua`: left-side git signs.
 - `lua/git_status/scrollbar.lua`: right-side scrollbar overlay.
 - `lua/git_status/status.lua`: `:Status` changed-file list.
-- `lua/git_status/conflict.lua`: `:Conflict` conflict resolver.
 - `lua/git_status/blame.lua`: `:Blame` scratch view.
 - `lua/git_status/highlights.lua`: highlight groups.
 - `lua/git_status/util.lua`: shared small helpers.
@@ -119,7 +107,6 @@ Defaults:
   },
   commands = {
     blame = "Blame",
-    conflict = "Conflict",
     refresh = "GitStatusRefresh",
     status = "Status",
     toggle = "GitStatusToggle",
